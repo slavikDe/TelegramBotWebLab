@@ -15,9 +15,12 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 public class AppBot implements LongPollingSingleThreadUpdateConsumer {
 
     private final TelegramClient telegramClient;
+    private final ChatModel chatModel;
+    private int lastMainMenuMessageId = -1;
 
     public AppBot(String botToken) {
         telegramClient = new OkHttpTelegramClient(botToken);
+        chatModel = new ChatModel();
     }
 
     @Override
@@ -29,7 +32,7 @@ public class AppBot implements LongPollingSingleThreadUpdateConsumer {
             long chatId = update.getMessage().getChatId();
 
             if (messageText.equals("/start")) {
-                sendMainMenu(chatId);
+                lastMainMenuMessageId = sendMainMenu(chatId);
             }
         } else if (update.hasCallbackQuery()) {
             String data = update.getCallbackQuery().getData();
@@ -65,25 +68,20 @@ public class AppBot implements LongPollingSingleThreadUpdateConsumer {
                             "• GitHub: github.com/n" +
                             "• Office Hours: Mon-Fri 9:00-17:00");
                     break;
-                case "chatgpt":
+                case "chat":
                     deleteMessage(chatId, messageId);
-                    sendInfo(chatId, "🤖 ChatGPT Prompt Examples\n\n" +
-                            "• Code Review: \"Please review this Java code for best practices\"\n" +
-                            "• Bug Fixing: \"Help me debug this error in my Spring application\"\n" +
-                            "• Documentation: \"Generate javadoc for this method\"\n" +
-                            "• Learning: \"Explain dependency injection in Spring\"\n" +
-                            "• Optimization: \"How can I improve this SQL query performance?\"\n" +
-                            "• Testing: \"Write unit tests for this service class\"");
+                    String chatResponse = chatModel.getChatResponse();
+                    sendInfo(chatId, "🤖 AI Chat Response:\n\n" + chatResponse);
                     break;
                 case "back":
                     deleteMessage(chatId, messageId);
-                    sendMainMenu(chatId);
+                    lastMainMenuMessageId = sendMainMenu(chatId);
                     break;
             }
         }
     }
 
-    private void sendMainMenu(long chatId) {
+    private int sendMainMenu(long chatId) {
         InlineKeyboardMarkup mainMenuMarkup = InlineKeyboardMarkup.builder()
                 .keyboardRow(new InlineKeyboardRow(
                         InlineKeyboardButton.builder()
@@ -101,8 +99,8 @@ public class AppBot implements LongPollingSingleThreadUpdateConsumer {
                                 .callbackData("contacts")
                                 .build(),
                         InlineKeyboardButton.builder()
-                                .text("🤖 ChatGPT Prompts")
-                                .callbackData("chatgpt")
+                                .text("💬 AI Chat")
+                                .callbackData("chat")
                                 .build()
                 ))
                 .build();
@@ -110,7 +108,7 @@ public class AppBot implements LongPollingSingleThreadUpdateConsumer {
         SendMessage message = new SendMessage(String.valueOf(chatId),
                 "🎯 Welcome to the Main Menu!\n\nPlease select an option:");
         message.setReplyMarkup(mainMenuMarkup);
-        execute(message);
+        return executeAndGetMessageId(message);
     }
 
     private void sendInfo(long chatId, String text) {
@@ -133,6 +131,15 @@ public class AppBot implements LongPollingSingleThreadUpdateConsumer {
             telegramClient.execute(message);
         } catch (TelegramApiException e) {
             e.printStackTrace();
+        }
+    }
+
+    private int executeAndGetMessageId(SendMessage message) {
+        try {
+            return telegramClient.execute(message).getMessageId();
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+            return -1;
         }
     }
 
